@@ -1,13 +1,14 @@
-# pip install streamlit python-dotenv langchain-groq pdfplumber streamlit-mic-recorder SpeechRecognition
+# pip install streamlit python-dotenv langchain-groq pdfplumber streamlit-mic-recorder SpeechRecognition pydub
 
 import os
+import io
 import streamlit as st
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 import pdfplumber
 import speech_recognition as sr
 from streamlit_mic_recorder import mic_recorder
-import io
+from pydub import AudioSegment
 
 load_dotenv()
 
@@ -174,7 +175,7 @@ ANSWER EVALUATION RULES:
    - If candidate struggles consistently: ask simpler follow-up questions.
 
 5. Never reveal answers before candidate attempts.
-6. Never act like a tutor — act like a real interviewer.
+6. Never act like a real interviewer.
 
 FINAL REPORT FORMAT (when asked to end):
 
@@ -236,19 +237,21 @@ def get_bot_response(history):
     return response.content
 
 # ── VOICE TO TEXT FUNCTION ─────────────────────────────────────────
-# this takes the recorded audio and converts it to text
 def voice_to_text(audio_bytes):
     recognizer = sr.Recognizer()
-    audio_file = io.BytesIO(audio_bytes)
-    with sr.AudioFile(audio_file) as source:
-        audio_data = recognizer.record(source)
     try:
+        audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
+        wav_io = io.BytesIO()
+        audio.export(wav_io, format="wav")
+        wav_io.seek(0)
+        with sr.AudioFile(wav_io) as source:
+            audio_data = recognizer.record(source)
         text = recognizer.recognize_google(audio_data)
         return text
     except sr.UnknownValueError:
-        return None  # could not understand audio
-    except sr.RequestError:
-        return None  # network error
+        return None
+    except Exception:
+        return None
 
 # ── CHAT AREA ──────────────────────────────────────────────────────
 if not st.session_state.interview_started:
@@ -281,12 +284,9 @@ else:
     # ── INPUT AREA — TEXT + VOICE ──────────────────────────────────
     st.write("**Answer by typing or by voice:**")
 
-    # two columns — left for mic, right for text input
     col1, col2 = st.columns([1, 4])
 
     with col1:
-        # mic recorder button
-        # key changes every time so it resets after each recording
         audio = mic_recorder(
             start_prompt="🎤 Speak",
             stop_prompt="⏹ Stop",
@@ -297,14 +297,13 @@ else:
     with col2:
         user_prompt = st.chat_input("Or type your answer...")
 
-    # ── HANDLE VOICE INPUT ─────────────────────────────────────────
+    # handle voice input
     if audio:
         with st.spinner("Converting your voice to text... 🎙️"):
             voice_text = voice_to_text(audio["bytes"])
 
         if voice_text:
             st.success(f"You said: {voice_text}")
-            # treat voice text same as typed text
             st.session_state.chat_history.append({"role": "user", "content": voice_text})
             st.chat_message("user").markdown(voice_text)
 
@@ -316,7 +315,7 @@ else:
         else:
             st.warning("Could not understand your voice. Please try again or type your answer!")
 
-    # ── HANDLE TEXT INPUT ──────────────────────────────────────────
+    # handle text input
     if user_prompt:
         st.session_state.chat_history.append({"role": "user", "content": user_prompt})
         st.chat_message("user").markdown(user_prompt)
