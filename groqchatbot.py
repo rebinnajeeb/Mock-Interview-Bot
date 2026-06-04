@@ -1,10 +1,13 @@
-# pip install streamlit python-dotenv langchain-groq pdfplumber
+# pip install streamlit python-dotenv langchain-groq pdfplumber streamlit-mic-recorder SpeechRecognition
 
 import os
 import streamlit as st
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 import pdfplumber
+import speech_recognition as sr
+from streamlit_mic_recorder import mic_recorder
+import io
 
 load_dotenv()
 
@@ -117,76 +120,71 @@ PHASE 1 - INTRODUCTION:
   "Welcome! Before we get into technical questions, I'd love to learn more about you.
   Could you please introduce yourself and walk me through your background?"
 - Analyze: Communication, Confidence, Clarity, Professionalism
+- Acknowledge their intro warmly before moving to next phase.
 
-PHASE 2 - RESUME ANALYSIS:
-- Analyze the resume and extract: Skills, Projects, Education, Tools, Technologies
-- Create a mental question distribution plan covering all skills
-- Do not skip any major skill from the resume
-
-PHASE 3 - BEHAVIORAL INTERVIEW:
-- Ask questions about:
-  * Leadership
-  * Teamwork
-  * Conflict resolution
-  * Time management
-  * Learning ability
-  * Adaptability
-
-PHASE 4 - TECHNICAL INTERVIEW:
-- Ask questions based on resume skills
+PHASE 2 - TECHNICAL QUESTIONS FROM RESUME:
+- Analyze the resume and extract all skills, tools, technologies, projects, education.
+- Create a mental question plan covering ALL skills — do not skip any.
+- Ask questions based on skills in the resume.
 - Always relate to target role: {st.session_state.target_role}
-- Do NOT ask all questions from one skill
-- Mix intelligently: Skills + Tools + Technologies + Problem Solving
+- Do NOT ask all questions from one skill.
+- Mix intelligently: concepts, practical, scenario-based questions.
+- Increase difficulty gradually.
 
-PHASE 5 - PROJECT DISCUSSION:
-- Ask deep questions about projects in resume:
-  * Why did you choose this approach?
-  * What challenges did you face?
-  * What would you improve?
-  * How would this scale?
+PHASE 3 - PROJECT DEEP DIVE:
+- Ask deep questions about projects listed in resume.
+- Examples:
+  * Why did you choose this approach or technology?
+  * What challenges did you face and how did you solve them?
+  * What would you improve if you did it again?
+  * How would this project scale for more users?
 
-PHASE 6 - ADAPTIVE FOLLOW-UP:
-- If candidate answers well: increase difficulty
-- If candidate struggles: ask simpler follow-up questions
-
-PHASE 7 - HR QUESTIONS:
-- Ask HR questions like:
+PHASE 4 - HR AND BEHAVIORAL COMBINED:
+- Ask a mix of HR and behavioral questions naturally at the end.
+- Do not announce "now HR round starting" — just flow naturally.
+- Include questions like:
   * Are you open to relocation?
   * Where do you see yourself in 5 years?
   * What is your passion or hobby outside work?
   * Why do you want to work in this role?
   * How do you handle pressure or tight deadlines?
+  * Tell me about a challenge you faced and how you overcame it.
+  * Are you a team player? Give an example.
+  * How do you keep yourself updated with new technologies?
 
 ANSWER EVALUATION RULES:
 1. If candidate gives a CORRECT answer:
-   - Say: "Great answer!", "Exactly right!", "Well explained!"
+   - Acknowledge positively: "Great answer!", "Exactly right!", "Well explained!"
    - Move to next question.
 
 2. If candidate gives a WRONG or UNCONFIDENT answer:
    - Say: "That answer was not quite right." or "You seem unsure about this one."
    - Give correct answer in short:
-     "✅ Correct Answer: [short answer in 2-3 lines]"
+     "✅ Correct Answer: [short answer in 2-3 lines max]"
    - Say: "No worries, let's move on!" and ask next question.
 
-3. If candidate gives INCOMPLETE answer:
+3. If candidate gives an INCOMPLETE answer:
    - Ask follow-up: "Can you elaborate more on that?"
-   - If still incomplete after follow-up:
-     "✅ Correct Answer: [short answer in 2-3 lines]"
+   - If still incomplete:
+     "✅ Correct Answer: [short answer in 2-3 lines max]"
    - Move to next question.
 
-4. Never reveal answers before candidate attempts.
-5. Never act like a tutor — act like a real interviewer.
+4. ADAPTIVE BEHAVIOR:
+   - If candidate answers well consistently: increase difficulty.
+   - If candidate struggles consistently: ask simpler follow-up questions.
+
+5. Never reveal answers before candidate attempts.
+6. Never act like a tutor — act like a real interviewer.
 
 FINAL REPORT FORMAT (when asked to end):
-Generate a detailed attractive report exactly like this:
 
 # 🎯 OVERALL PERFORMANCE
 - Overall Score: X/100
 - Interview Readiness: Beginner / Intermediate / Advanced
 
 # 💻 TECHNICAL PERFORMANCE
-- [Skill from resume]: X/10
-- [Skill from resume]: X/10
+- [Skill 1 from resume]: X/10
+- [Skill 2 from resume]: X/10
 - Problem Solving: X/10
 - Projects: X/10
 
@@ -219,7 +217,7 @@ Note: These are observational insights only, not clinical assessments.
 - Week 4: [specific tasks]
 
 # 💬 FINAL FEEDBACK
-[A warm, personalized summary of the candidate's performance and next steps]
+[A warm personalized summary of the candidate's performance and next steps]
 """
 
 # ── LLM SETUP ──────────────────────────────────────────────────────
@@ -236,6 +234,21 @@ def get_bot_response(history):
         ]
     )
     return response.content
+
+# ── VOICE TO TEXT FUNCTION ─────────────────────────────────────────
+# this takes the recorded audio and converts it to text
+def voice_to_text(audio_bytes):
+    recognizer = sr.Recognizer()
+    audio_file = io.BytesIO(audio_bytes)
+    with sr.AudioFile(audio_file) as source:
+        audio_data = recognizer.record(source)
+    try:
+        text = recognizer.recognize_google(audio_data)
+        return text
+    except sr.UnknownValueError:
+        return None  # could not understand audio
+    except sr.RequestError:
+        return None  # network error
 
 # ── CHAT AREA ──────────────────────────────────────────────────────
 if not st.session_state.interview_started:
@@ -265,9 +278,45 @@ else:
         elif message["role"] == "assistant":
             st.chat_message("assistant").markdown(message["content"])
 
-    # user input
-    user_prompt = st.chat_input("Type your answer...")
+    # ── INPUT AREA — TEXT + VOICE ──────────────────────────────────
+    st.write("**Answer by typing or by voice:**")
 
+    # two columns — left for mic, right for text input
+    col1, col2 = st.columns([1, 4])
+
+    with col1:
+        # mic recorder button
+        # key changes every time so it resets after each recording
+        audio = mic_recorder(
+            start_prompt="🎤 Speak",
+            stop_prompt="⏹ Stop",
+            just_once=True,
+            key="mic"
+        )
+
+    with col2:
+        user_prompt = st.chat_input("Or type your answer...")
+
+    # ── HANDLE VOICE INPUT ─────────────────────────────────────────
+    if audio:
+        with st.spinner("Converting your voice to text... 🎙️"):
+            voice_text = voice_to_text(audio["bytes"])
+
+        if voice_text:
+            st.success(f"You said: {voice_text}")
+            # treat voice text same as typed text
+            st.session_state.chat_history.append({"role": "user", "content": voice_text})
+            st.chat_message("user").markdown(voice_text)
+
+            with st.spinner("Interviewer is thinking... 🤔"):
+                assistant_response = get_bot_response(st.session_state.chat_history)
+
+            st.session_state.chat_history.append({"role": "assistant", "content": assistant_response})
+            st.chat_message("assistant").markdown(assistant_response)
+        else:
+            st.warning("Could not understand your voice. Please try again or type your answer!")
+
+    # ── HANDLE TEXT INPUT ──────────────────────────────────────────
     if user_prompt:
         st.session_state.chat_history.append({"role": "user", "content": user_prompt})
         st.chat_message("user").markdown(user_prompt)
