@@ -261,6 +261,23 @@ if not st.session_state.interview_started:
     st.info("👈 Upload your resume and fill in the details in the sidebar to start!")
 
 else:
+    # float the mic button down to the bottom, next to the chat input
+    st.markdown(
+        """
+        <style>
+        iframe[title="streamlit_mic_recorder.mic_recorder"] {
+            position: fixed;
+            bottom: 14px;
+            left: 360px;
+            width: 120px;
+            height: 45px;
+            z-index: 1000;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     # bot asks first question automatically
     if st.session_state.bot_should_greet:
         with st.spinner("Interviewer is preparing... 🤔"):
@@ -277,15 +294,6 @@ else:
         st.session_state.chat_history.append({"role": "assistant", "content": report})
         st.session_state.end_interview = False
 
-    # voice input area (sits above chat — works reliably every time)
-    st.write("**Answer by voice:**")
-    audio = mic_recorder(
-        start_prompt="🎤 Speak",
-        stop_prompt="⏹ Stop",
-        just_once=True,
-        key=f"mic_{st.session_state.mic_key}"   # changing key → never goes dead
-    )
-
     # show chat history
     for message in st.session_state.chat_history:
         if message["role"] == "user":
@@ -295,6 +303,14 @@ else:
 
     # text input — auto-pinned to bottom
     user_prompt = st.chat_input("Type your answer...")
+
+    # voice mic — CSS above floats it to the bottom next to the text box
+    audio = mic_recorder(
+        start_prompt="🎤",
+        stop_prompt="⏹",
+        just_once=True,
+        key=f"mic_{st.session_state.mic_key}"
+    )
 
     # handle voice input
     if audio:
