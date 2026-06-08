@@ -45,6 +45,9 @@ if "bot_should_greet" not in st.session_state:
 if "end_interview" not in st.session_state:
     st.session_state.end_interview = False
 
+if "mic_key" not in st.session_state:
+    st.session_state.mic_key = 0
+
 # ── SIDEBAR ────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("📄 Setup Your Interview")
@@ -274,6 +277,15 @@ else:
         st.session_state.chat_history.append({"role": "assistant", "content": report})
         st.session_state.end_interview = False
 
+    # voice input area (sits above chat — works reliably every time)
+    st.write("**Answer by voice:**")
+    audio = mic_recorder(
+        start_prompt="🎤 Speak",
+        stop_prompt="⏹ Stop",
+        just_once=True,
+        key=f"mic_{st.session_state.mic_key}"   # changing key → never goes dead
+    )
+
     # show chat history
     for message in st.session_state.chat_history:
         if message["role"] == "user":
@@ -281,17 +293,7 @@ else:
         elif message["role"] == "assistant":
             st.chat_message("assistant").markdown(message["content"])
 
-    # ── INPUT AREA — TEXT + VOICE ──────────────────────────────────
-    st.write("**Answer by voice:**")
-
-    audio = mic_recorder(
-        start_prompt="🎤 Speak",
-        stop_prompt="⏹ Stop",
-        just_once=True,
-        key="mic"
-    )
-
-    # chat_input OUTSIDE any column → auto-pins to bottom
+    # text input — auto-pinned to bottom
     user_prompt = st.chat_input("Type your answer...")
 
     # handle voice input
@@ -299,26 +301,25 @@ else:
         with st.spinner("Converting your voice to text... 🎙️"):
             voice_text = voice_to_text(audio["bytes"])
 
+        st.session_state.mic_key += 1  # bump key so next recording is fresh
+
         if voice_text:
-            st.success(f"You said: {voice_text}")
             st.session_state.chat_history.append({"role": "user", "content": voice_text})
-            st.chat_message("user").markdown(voice_text)
 
             with st.spinner("Interviewer is thinking... 🤔"):
                 assistant_response = get_bot_response(st.session_state.chat_history)
 
             st.session_state.chat_history.append({"role": "assistant", "content": assistant_response})
-            st.chat_message("assistant").markdown(assistant_response)
+            st.rerun()
         else:
             st.warning("Could not understand your voice. Please try again or type your answer!")
 
     # handle text input
     if user_prompt:
         st.session_state.chat_history.append({"role": "user", "content": user_prompt})
-        st.chat_message("user").markdown(user_prompt)
 
         with st.spinner("Interviewer is thinking... 🤔"):
             assistant_response = get_bot_response(st.session_state.chat_history)
 
         st.session_state.chat_history.append({"role": "assistant", "content": assistant_response})
-        st.chat_message("assistant").markdown(assistant_response)
+        st.rerun()
