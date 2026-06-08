@@ -282,20 +282,17 @@ else:
             st.chat_message("assistant").markdown(message["content"])
 
     # ── INPUT AREA — TEXT + VOICE ──────────────────────────────────
-    st.write("**Answer by typing or by voice:**")
+    st.write("**Answer by voice:**")
 
-    col1, col2 = st.columns([1, 4])
+    audio = mic_recorder(
+        start_prompt="🎤 Speak",
+        stop_prompt="⏹ Stop",
+        just_once=True,
+        key="mic"
+    )
 
-    with col1:
-        audio = mic_recorder(
-            start_prompt="🎤 Speak",
-            stop_prompt="⏹ Stop",
-            just_once=True,
-            key="mic"
-        )
-
-    with col2:
-        user_prompt = st.chat_input("Or type your answer...")
+    # chat_input OUTSIDE any column → auto-pins to bottom
+    user_prompt = st.chat_input("Type your answer...")
 
     # handle voice input
     if audio:
